@@ -1,0 +1,1648 @@
+---
+title: "Bat Research 1"
+author: "Alex"
+date: "2023-06-09"
+output: pdf_document
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Playing around with Bat data
+
+#Loading libraries
+
+```{r}
+rm(list=ls())
+
+setwd("C:/Users/almad/OneDrive/Documents/R/Bats")
+
+library(leaflet)
+library(RgoogleMaps)
+library(googleVis)
+library(labdsv)
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(readr)
+library(tidyr)
+library(gridExtra)
+library(ggfortify)
+library(arm)
+library(lme4)
+library(MASS)
+library(Matrix)
+library(arm)
+library(broom)
+library(vegan)
+library(adespatial)
+library(gclus)
+library(cluster)
+library(pvclust)
+library(RColorBrewer)
+library(labdsv)
+library(rioja)
+library(indicspecies)
+library(dendextend)
+library(vegclust)
+library(colorspace)
+library(agricolae)
+library(picante)
+library(ade4)
+library(adespatial)
+library(FD)
+library(ape)
+library(missMDA)
+library(FactoMineR)
+library(GGally)
+library(cowplot)
+library(xtable)
+library(sjPlot)
+library(stargazer)
+library(glmmADMB)
+library(ggpubr)
+library(corrplot)
+library(egg)
+library(lubridate)
+source("panelutils.R")
+
+```
+
+#uploading bat data
+
+```{r}
+library(readr)
+Bat_Social_Experiment_Data <- read_csv("Bat Social Experiment Data.csv")
+
+
+batsocial<-Bat_Social_Experiment_Data
+batsocial
+
+library(readr)
+Rousettus_Preliminary_GUDs_Poor_Rich <- read_csv("Rousettus Preliminary GUDs Poor Rich.csv")
+batprelim<-Rousettus_Preliminary_GUDs_Poor_Rich
+batprelim
+```
+
+#summarizing data
+
+```{r}
+summary(batsocial)
+glimpse(batsocial)
+tbl_df(batsocial)
+names(batsocial)
+head(batsocial)
+dim(batsocial)
+str(batsocial)
+batsocial
+
+summary(batprelim)
+glimpse(batprelim)
+tbl_df(batprelim)
+names(batprelim)
+head(batprelim)
+dim(batprelim)
+str(batprelim)
+batprelim
+```
+
+```{r}
+#change to factors
+
+batsocial$ID<-factor(batsocial$ID)
+batsocial$Sex<-factor(batsocial$Sex)
+batsocial$Trial<-factor(batsocial$Trial)
+batsocial$Cage<-factor(batsocial$Cage)
+batsocial$Social<-factor(batsocial$Social)
+batsocial$Pairing<-factor(batsocial$Pairing)
+batsocial$Block<-factor(batsocial$Block)
+batsocial
+
+batprelim$ID<-factor(batprelim$ID)
+batprelim$Sex<-factor(batprelim$Sex)
+batprelim$Trial<-factor(batprelim$Trial)
+batprelim$Cage<-factor(batprelim$Cage)
+batprelim
+```
+
+Outlier Removed
+
+```{r}
+batsocial
+batsocial<-batsocial %>%
+  mutate(Social = recode(Social,
+                            "Y" = "Paired",
+                            "N" = "Solitary"))
+
+batsocial<- batsocial %>%  dplyr::rename(Set = Block)
+
+batsocial<-batsocial %>% drop_na(Pairing)
+
+batsocial
+
+batsocialnz<-batsocial %>%
+  filter(!row_number() %in% c(3,4,31,32))
+batsocialnz
+
+batsocial<-batsocial %>% drop_na(Pairing)
+
+#Making log-transformed GUDs column
+batsocialnz<-batsocialnz %>% dplyr::mutate_at(vars(GUD), funs(Log_GUD=log(.)))
+batsocialnz
+
+batsocialnz<-batsocialnz %>%
+ dplyr::mutate_at(vars(GUD), funs(Sqrt_GUD=sqrt(.)))
+batsocialnz
+
+#making new PRopGUD column
+batsocialnz<-transform(batsocialnz, new = Final_Patch_Mass / Initial_Patch_Mass)
+batsocialnz<-dplyr::rename(batsocialnz,GUD.P=new)
+batsocialnz
+```
+
+
+
+Change to long format
+
+```{r}
+batprelim
+longer <- pivot_longer(batprelim, cols=(12:27),names_pattern = "(.*)(....)$", names_to = c("limit", "Richness")) %>% 
+     mutate(limit=ifelse(limit=="", "value", limit))
+longer
+
+batprelim_l <-pivot_wider(longer, id_cols = c(1:11, Richness), names_from = limit, values_from = value, names_repair = "check_unique")
+
+batprelim_l<-dplyr::rename(batprelim_l,GUD=value)
+
+batprelim_l$Richness<-factor(batprelim_l$Richness)
+batprelim_l
+```
+Make proportion columns
+```{r}
+batprelim_l<-transform(batprelim_l, new = Final_Patch_Mass / Initial_Patch_Mass)
+batprelim_l<-dplyr::rename(batprelim_l,GUD.P=new)
+
+batprelim_l<-transform(batprelim_l, new =  Initial_Patch_Mass - Final_Patch_Mass)
+batprelim_l<-dplyr::rename(batprelim_l,Amount_Harvested=new)
+
+batprelim_l<-transform(batprelim_l, new =  Amount_Harvested / Initial_Patch_Mass)
+batprelim_l<-dplyr::rename(batprelim_l,Individual_foraging_per_patch=new)
+
+batprelim_l
+```
+
+
+Preliminary box-whisker plots
+```{r}
+batprelim_l
+
+ggplot(batprelim_l,aes(x=Richness,y=GUD,fill=Richness))+geom_boxplot()
+ggplot(batprelim_l,aes(x=Richness,y=GUD.P,fill=Richness))+geom_boxplot()+labs(title="Proportion food left behind in response to patch richness",y="P.GUD")+ theme(legend.position = "none")+theme(axis.text.x=element_text(size=15))+theme(axis.title.x=element_text(size=15,face="bold"))+theme(axis.title.y=element_text(size=12,face="bold"))+ theme(legend.key.size = unit(1.5, 'cm'))+theme(legend.title = element_text(size=15))+theme(legend.text = element_text(size=10))+ theme(plot.title=element_text(size=20))
+ggplot(batprelim_l,aes(x=Richness,y=GUD.P,fill=Richness))+geom_boxplot()+labs(y="PGUD")+facet_wrap(~ID)
+ggplot(batprelim_l,aes(x=Richness,y=GUD.P,fill=Richness))+geom_boxplot()+labs(y="PGUD")+facet_wrap(~ID)
+ggplot(batprelim_l,aes(x=Richness,y=GUD.P,fill=Richness))+geom_boxplot()+labs(y="PGUD")+facet_wrap(~Sex)
+
+ggplot(batprelim_l,aes(x=Richness,y=GUD,fill=Richness))+geom_boxplot()
+ggplot(batprelim_l,aes(x=Richness,y=Individual_foraging_per_patch,fill=Richness))+geom_boxplot()+labs(title="Proportion food harvested in response to patch richness",y="Proportion Harvested")+ theme(legend.position = "none")+theme(axis.text.x=element_text(size=15))+theme(axis.title.x=element_text(size=15,face="bold"))+theme(axis.title.y=element_text(size=12,face="bold"))+ theme(legend.key.size = unit(1.5, 'cm'))+theme(legend.title = element_text(size=15))+theme(legend.text = element_text(size=10))+ theme(plot.title=element_text(size=20))
+
+ggplot(batprelim_l,aes(x=Richness,y=Individual_foraging_per_patch,fill=Richness))+geom_boxplot()+labs(y="Proportion Harvested")+ theme(legend.position = "none")+theme(axis.text.x=element_text(size=15))+theme(axis.title.x=element_text(size=15,face="bold"))+theme(axis.title.y=element_text(size=12,face="bold"))+ theme(legend.key.size = unit(1.5, 'cm'))+theme(legend.title = element_text(size=15))+theme(legend.text = element_text(size=10))+ theme(plot.title=element_text(size=20))
+```
+
+
+Social box-whisker plots
+
+```{r}
+ggplot(batsocial,aes(x=Sex,y=GUD,fill=Sex))+geom_boxplot()+labs(title="Sex differences in foraging",
+        x ="Sex", y = "Giving-Up Densities")
+
+ggplot(batsocial,aes(x=Social,y=GUD,fill=Social))+geom_boxplot()+labs(title="Social differences in foraging",
+        x ="Social", y = "Giving-Up Densities")
+
+ggplot(batsocial,aes(x=Social,y=GUD, fill=Sex))+geom_boxplot()+facet_wrap(~Sex)
+
+ggplot(batsocial,aes(x=Sex,y=GUD, fill=Sex))+geom_boxplot()+facet_wrap(~Social)
+
+ggplot(batsocial,aes(x=ID,y=GUD, fill=Sex))+geom_boxplot()+facet_wrap(~Social)
+
+ggplot(batsocial,aes(x=ID,y=GUD, fill=Sex))+geom_boxplot()
+
+ggplot(batsocial,aes(x=Social,y=GUD, fill=Sex))+geom_boxplot()+facet_wrap(~ID)
+
+ggplot(batsocial,aes(x=Trial,y=GUD, fill=Sex))+geom_boxplot()
+
+ggplot(batsocial,aes(x=Trial,y=GUD, fill=Trial))+geom_boxplot()
+
+ggplot(batsocial,aes(x=Trial,y=GUD, fill=Sex))+geom_boxplot()+facet_wrap(~ID)
+
+batsocial %>% drop_na(Pairing) %>% ggplot(aes(x=Pairing,y=GUD, fill=Sex))+geom_boxplot()
+
+batsocial %>% drop_na(Pairing) %>% ggplot(aes(x=Pairing,y=GUD, fill=Pairing))+geom_boxplot()
+
+batsocial %>% drop_na(Pairing) %>% filter(Pairing == 'MF') %>% ggplot(aes(x=Sex,y=GUD, fill=Sex))+geom_boxplot()+labs(title="Sex differences in foraging in MF pairings",
+        x ="Sex", y = "Giving-Up Densities")
+
+batsocial %>% drop_na(Pairing) %>% ggplot(aes(x=Pairing,y=GUD, fill=Sex))+geom_boxplot()+facet_wrap(~ID)+labs(title="Sex differences in foraging in MF pairings",
+        x ="Sex", y = "Giving-Up Densities")
+
+batsocial %>% drop_na(Pairing) %>% ggplot(aes(x=ID,y=GUD, fill=Sex))+geom_boxplot()+facet_wrap(~Pairing)+labs(title="Sex differences in foraging in MF pairings",
+        x ="Sex", y = "Giving-Up Densities")
+```
+
+box-whisker plots without MM outliers All
+
+```{r}
+batsocialnz
+
+batsocialnz_solitary<-batsocialnz %>% filter(Social == 'Solitary')
+batsocialnz_paired<-batsocialnz %>% filter(Social == 'Paired')
+
+ggplot(batsocialnz,aes(x=Sex,y=GUD,fill=Sex))+geom_boxplot()+labs(title="Sex differences in foraging",
+        x ="Sex", y = "Giving-Up Densities")
+ggplot(batsocialnz,aes(x=Sex,y=GUD,fill=Sex))+geom_boxplot()+labs(title="Sex differences in foraging",
+        x ="Sex", y = "Giving-Up Densities")+facet_wrap(~Set)
+
+ggplot(batsocialnz_solitary,aes(x=Sex,y=GUD,fill=Sex))+geom_boxplot()+labs(title="Sex differences in solitary foraging",
+        x ="Sex", y = "Giving-Up Densities")
+ggplot(batsocialnz_solitary,aes(x=Sex,y=GUD,fill=Sex))+geom_boxplot()+labs(
+        x ="Sex", y = "Giving-Up Densities")
+ggplot(batsocialnz_solitary,aes(x=Sex,y=GUD,fill=Sex))+geom_boxplot()+labs(title="Sex differences in solitary foraging",
+        x ="Sex", y = "Giving-Up Densities")+facet_wrap(~Set)
+
+ggplot(batsocialnz,aes(x=Sex,y=GUD,fill=Social))+geom_boxplot()+labs(title="Sex differences in foraging",
+        x ="Sex", y = "Giving-Up Densities")+facet_wrap(~Set)
+ggplot(batsocialnz_solitary,aes(x=Sex,y=GUD,fill=Social))+geom_boxplot()+labs(title="Sex differences in solitary foraging",
+        x ="Sex", y = "Giving-Up Densities")+facet_wrap(~Set)
+
+ggplot(batsocialnz,aes(x=Social,y=GUD,fill=Social))+geom_boxplot()+labs(title="Foraging differences in response to social context",
+        x ="Social", y = "GUDs")+ theme(legend.position = "none")+theme(axis.text.x=element_text(size=15))+theme(axis.title.x=element_text(size=15,face="bold"))+theme(axis.title.y=element_text(size=12,face="bold"))+ theme(legend.key.size = unit(1.5, 'cm'))+theme(legend.title = element_text(size=15))+theme(legend.text = element_text(size=10))+ theme(plot.title=element_text(size=20))
+
+ggplot(batsocialnz,aes(x=Social,y=GUD,fill=Social))+geom_boxplot()+labs(title="Foraging differences in response to social context",
+        x ="Social", y = "GUDs")+ theme(legend.position = "none")+theme(axis.text.x=element_text(size=15))+theme(axis.title.x=element_text(size=15,face="bold"))+theme(axis.title.y=element_text(size=12,face="bold"))+ theme(legend.key.size = unit(1.5, 'cm'))+theme(legend.title = element_text(size=15))+theme(legend.text = element_text(size=10))+ theme(plot.title=element_text(size=20))+facet_wrap(~Set)
+
+ggplot(batsocialnz,aes(x=Social,y=GUD, fill=Sex))+geom_boxplot()+facet_wrap(~Sex)
+
+ggplot(batsocialnz,aes(x=Sex,y=GUD, fill=Sex))+geom_boxplot()+facet_wrap(~Social)
+
+ggplot(batsocialnz,aes(x=ID,y=GUD, fill=Sex))+geom_boxplot()+facet_wrap(~Social)
+
+ggplot(batsocialnz,aes(x=ID,y=GUD, fill=Sex))+geom_boxplot()
+ggplot(batsocialnz,aes(x=ID,y=GUD, fill=Sex))+geom_boxplot()+facet_wrap(~Set)
+
+ggplot(batsocialnz,aes(x=Social,y=GUD, fill=Sex))+geom_boxplot()+facet_wrap(~ID)+labs(title="Individual differences in foraging", x ="Social", y = "GUDs")+ theme(legend.position = "none")+theme(axis.text.x=element_text(size=15))+theme(axis.title.x=element_text(size=15,face="bold"))+theme(axis.title.y=element_text(size=12,face="bold"))+ theme(legend.key.size = unit(1.5, 'cm'))+theme(legend.title = element_text(size=15))+theme(legend.text = element_text(size=10))+ theme(plot.title=element_text(size=20))
+
+ggplot(batsocialnz,aes(x=Trial,y=GUD, fill=Sex))+geom_boxplot()
+ggplot(batsocialnz,aes(x=Trial,y=GUD, fill=Sex))+geom_boxplot()+facet_wrap(~Set)
+ggplot(batsocialnz_solitary,aes(x=Trial,y=GUD, fill=Sex))+geom_boxplot()+facet_wrap(~Set)
+
+ggplot(batsocialnz,aes(x=Trial,y=GUD, fill=Trial))+geom_boxplot()
+ggplot(batsocialnz,aes(x=Trial,y=GUD, fill=Trial))+geom_boxplot()+facet_wrap(~Set)
+ggplot(batsocialnz_solitary,aes(x=Trial,y=GUD, fill=Trial))+geom_boxplot()+facet_wrap(~Set)
+
+ggplot(batsocialnz,aes(x=Trial,y=GUD, fill=Sex))+geom_boxplot()+facet_wrap(~Sex)+labs(title="Foraging changes over Trials",
+        x ="Trial", y = "Giving-Up Densities")
+
+ggplot(batsocialnz_solitary,aes(x=Trial,y=GUD, fill=Sex))+geom_boxplot()+facet_wrap(~Sex)+labs(title="Foraging changes over solitary trials",
+        x ="Trial", y = "GUDs")+ theme(legend.position = "none")+theme(axis.text.x=element_text(size=15))+theme(axis.title.x=element_text(size=15,face="bold"))+theme(axis.title.y=element_text(size=12,face="bold"))+ theme(legend.key.size = unit(1.5, 'cm'))+theme(legend.title = element_text(size=15))+theme(legend.text = element_text(size=10))+ theme(plot.title=element_text(size=20))
+
+ggplot(batsocialnz,aes(x=Trial,y=GUD, fill=Sex))+geom_boxplot()+facet_wrap(~Social)
+
+ggplot(batsocialnz,aes(x=Trial,y=GUD, fill=Sex))+geom_boxplot()+facet_wrap(~ID)
+
+batsocialnz %>% drop_na(Pairing) %>% ggplot(aes(x=Pairing,y=GUD, fill=Sex))+geom_boxplot()
+batsocialnz %>% drop_na(Pairing) %>% ggplot(aes(x=Pairing,y=GUD, fill=Sex))+geom_boxplot()+facet_wrap(~Set)
+
+batsocialnz %>% drop_na(Pairing) %>% ggplot(aes(x=Pairing,y=GUD, fill=Pairing))+geom_boxplot()
+batsocialnz %>% drop_na(Pairing) %>% ggplot(aes(x=Pairing,y=GUD, fill=Pairing))+geom_boxplot()+facet_wrap(~Set)
+batsocialnz %>% drop_na(Pairing) %>% ggplot(aes(x=Set,y=GUD, fill=Set))+geom_boxplot()+facet_wrap(~Pairing)
+
+batsocialnz %>% drop_na(Pairing) %>% filter(Social == 'Paired') %>% filter(Pairing == 'MF') %>% ggplot(aes(x=Sex,y=GUD, fill=Sex))+geom_boxplot()+labs(title="Sex differences while foraging in MF pairings",
+        x ="Sex", y = "GUDs")+ theme(legend.position = "none")+theme(axis.text.x=element_text(size=15))+theme(axis.title.x=element_text(size=15,face="bold"))+theme(axis.title.y=element_text(size=12,face="bold"))+ theme(legend.key.size = unit(1.5, 'cm'))+theme(legend.title = element_text(size=15))+theme(legend.text = element_text(size=10))+ theme(plot.title=element_text(size=20))+ theme(plot.title=element_text(size=20))
+
+batsocialnz %>% drop_na(Pairing) %>% filter(Social == 'Paired') %>% filter(Pairing == 'MF') %>% ggplot(aes(x=Sex,y=GUD, fill=Sex))+geom_boxplot()+labs(title="Sex differences while foraging in MF pairings",
+        x ="Sex", y = "GUDs")+facet_wrap(~Set)+ theme(legend.position = "none")+theme(axis.text.x=element_text(size=15))+theme(axis.title.x=element_text(size=15,face="bold"))+theme(axis.title.y=element_text(size=12,face="bold"))+ theme(legend.key.size = unit(1.5, 'cm'))+theme(legend.title = element_text(size=15))+theme(legend.text = element_text(size=10))+ theme(plot.title=element_text(size=20))+ theme(plot.title=element_text(size=20))
+
+
+batsocialnz %>% drop_na(Pairing) %>% ggplot(aes(x=Pairing,y=GUD, fill=Sex))+geom_boxplot()+facet_wrap(~ID)+labs(title="Sex differences in foraging in MF pairings",
+        x ="Sex", y = "Giving-Up Densities")
+
+batsocialnz %>% drop_na(Pairing) %>% ggplot(aes(x=ID,y=GUD, fill=Sex))+geom_boxplot()+facet_wrap(~Pairing)+labs(title="Sex differences in foraging in MF pairings",
+        x ="Sex", y = "Giving-Up Densities")
+
+#batsocialnz %>% filter(Social == 'Solitary') %>%filter(Day >= 5)  %>% ggplot(aes(x=Sex,y=GUD, fill=Sex))+geom_boxplot()+labs(title="Solitary foraging separate from but alongside opposite sex",
+        #x ="Sex", y = "GUDs")+ theme(legend.position = "none")+theme(axis.text.x=element_text(size=15))+theme(axis.title.x=element_text(size=15,face="bold"))+theme(axis.title.y=element_text(size=12,face="bold"))+ theme(legend.key.size = unit(1.5, 'cm'))+theme(legend.title = element_text(size=15))+theme(legend.text = element_text(size=10))+ theme(plot.title=element_text(size=20))+ theme(plot.title=element_text(size=20))
+```
+
+
+
+Per_Capita Box whiskers All
+```{r}
+batsocialnz_percapita<-batsocialnz %>% filter(Cage == '1')
+batsocialnz_percapita
+
+ggplot(batsocialnz_percapita,aes(x=Social,y=Per_Capita_GUD,fill=Social))+geom_boxplot()+labs(title="Foraging differences in response to social context",
+        x ="Social", y = "Per_Capita_GUDs")+ theme(legend.position = "none")+theme(axis.text.x=element_text(size=15))+theme(axis.title.x=element_text(size=15,face="bold"))+theme(axis.title.y=element_text(size=12,face="bold"))+ theme(legend.key.size = unit(1.5, 'cm'))+theme(legend.title = element_text(size=15))+theme(legend.text = element_text(size=10))+ theme(plot.title=element_text(size=20))
+
+ggplot(batsocialnz_percapita,aes(x=Social,y=Per_Capita_GUD,fill=Social))+geom_boxplot()+labs(title="Foraging differences in response to social context",
+        x ="Social", y = "Per_Capita_GUDs")+ theme(legend.position = "none")+theme(axis.text.x=element_text(size=15))+theme(axis.title.x=element_text(size=15,face="bold"))+theme(axis.title.y=element_text(size=12,face="bold"))+ theme(legend.key.size = unit(1.5, 'cm'))+theme(legend.title = element_text(size=15))+theme(legend.text = element_text(size=10))+ theme(plot.title=element_text(size=20))+facet_wrap(~Set)
+
+batsocialnz_percapita %>% drop_na(Pairing) %>% ggplot(aes(x=Pairing,y=Per_Capita_GUD, fill=Pairing))+geom_boxplot()
+batsocialnz_percapita %>% drop_na(Pairing) %>% ggplot(aes(x=Pairing,y=Per_Capita_GUD, fill=Pairing))+geom_boxplot()+facet_wrap(~Set)
+```
+
+
+
+
+
+
+Total Harvested Box whiskers
+```{r}
+batsocialnz
+ggplot(batsocialnz,aes(x=Sex,y=Total_Harvested,fill=Sex))+geom_boxplot()+labs(title="Sex differences in foraging",
+        x ="Sex", y = "Giving-Up Densities")
+ggplot(batsocialnz,aes(x=Sex,y=Total_Harvested,fill=Sex))+geom_boxplot()+labs(title="Sex differences in foraging",
+        x ="Sex", y = "Giving-Up Densities")+facet_wrap(~Set)
+
+ggplot(batsocialnz,aes(x=Social,y=Total_Harvested,fill=Social))+geom_boxplot()+labs(title="Foraging differences in response to social context",
+        x ="Social", y = "Total_Harvesteds")+ theme(legend.position = "none")+theme(axis.text.x=element_text(size=15))+theme(axis.title.x=element_text(size=15,face="bold"))+theme(axis.title.y=element_text(size=12,face="bold"))+ theme(legend.key.size = unit(1.5, 'cm'))+theme(legend.title = element_text(size=15))+theme(legend.text = element_text(size=10))+ theme(plot.title=element_text(size=20))
+
+ggplot(batsocialnz,aes(x=Social,y=Total_Harvested,fill=Social))+geom_boxplot()+labs(title="Foraging differences in response to social context",
+        x ="Social", y = "Total_Harvesteds")+ theme(legend.position = "none")+theme(axis.text.x=element_text(size=15))+theme(axis.title.x=element_text(size=15,face="bold"))+theme(axis.title.y=element_text(size=12,face="bold"))+ theme(legend.key.size = unit(1.5, 'cm'))+theme(legend.title = element_text(size=15))+theme(legend.text = element_text(size=10))+ theme(plot.title=element_text(size=20))+facet_wrap(~Set)
+
+ggplot(batsocialnz,aes(x=Social,y=Total_Harvested, fill=Sex))+geom_boxplot()+facet_wrap(~Sex)
+
+ggplot(batsocialnz,aes(x=Sex,y=Total_Harvested, fill=Sex))+geom_boxplot()+facet_wrap(~Social)
+
+ggplot(batsocialnz,aes(x=ID,y=Total_Harvested, fill=Sex))+geom_boxplot()+facet_wrap(~Social)
+
+ggplot(batsocialnz,aes(x=ID,y=Total_Harvested, fill=Sex))+geom_boxplot()
+ggplot(batsocialnz,aes(x=ID,y=Total_Harvested, fill=Sex))+geom_boxplot()+facet_wrap(~Set)
+
+ggplot(batsocialnz,aes(x=Social,y=Total_Harvested, fill=Sex))+geom_boxplot()+facet_wrap(~ID)+labs(title="Individual differences in foraging", x ="Social", y = "Total_Harvesteds")+ theme(legend.position = "none")+theme(axis.text.x=element_text(size=15))+theme(axis.title.x=element_text(size=15,face="bold"))+theme(axis.title.y=element_text(size=12,face="bold"))+ theme(legend.key.size = unit(1.5, 'cm'))+theme(legend.title = element_text(size=15))+theme(legend.text = element_text(size=10))+ theme(plot.title=element_text(size=20))
+
+ggplot(batsocialnz,aes(x=Trial,y=Total_Harvested, fill=Sex))+geom_boxplot()
+ggplot(batsocialnz,aes(x=Trial,y=Total_Harvested, fill=Sex))+geom_boxplot()+facet_wrap(~Set)
+
+ggplot(batsocialnz,aes(x=Trial,y=Total_Harvested, fill=Trial))+geom_boxplot()
+ggplot(batsocialnz,aes(x=Trial,y=Total_Harvested, fill=Trial))+geom_boxplot()+facet_wrap(~Set)
+
+ggplot(batsocialnz,aes(x=Trial,y=Total_Harvested, fill=Sex))+geom_boxplot()+facet_wrap(~Sex)+labs(title="Foraging changes over Trials",
+        x ="Trial", y = "Giving-Up Densities")
+
+batsocialnz_solitary<-batsocialnz %>% filter(Social == 'Solitary')
+ggplot(batsocialnz_solitary,aes(x=Trial,y=Total_Harvested, fill=Sex))+geom_boxplot()+facet_wrap(~Sex)+labs(title="Foraging changes over solitary trials",
+        x ="Trial", y = "Total_Harvesteds")+ theme(legend.position = "none")+theme(axis.text.x=element_text(size=15))+theme(axis.title.x=element_text(size=15,face="bold"))+theme(axis.title.y=element_text(size=12,face="bold"))+ theme(legend.key.size = unit(1.5, 'cm'))+theme(legend.title = element_text(size=15))+theme(legend.text = element_text(size=10))+ theme(plot.title=element_text(size=20))
+
+ggplot(batsocialnz,aes(x=Trial,y=Total_Harvested, fill=Sex))+geom_boxplot()+facet_wrap(~Social)
+
+ggplot(batsocialnz,aes(x=Trial,y=Total_Harvested, fill=Sex))+geom_boxplot()+facet_wrap(~ID)
+
+batsocialnz %>% drop_na(Pairing) %>% ggplot(aes(x=Pairing,y=Total_Harvested, fill=Sex))+geom_boxplot()
+batsocialnz %>% drop_na(Pairing) %>% ggplot(aes(x=Pairing,y=Total_Harvested, fill=Sex))+geom_boxplot()+facet_wrap(~Set)
+
+batsocialnz %>% drop_na(Pairing) %>% ggplot(aes(x=Pairing,y=Total_Harvested, fill=Pairing))+geom_boxplot()
+batsocialnz %>% drop_na(Pairing) %>% ggplot(aes(x=Pairing,y=Total_Harvested, fill=Pairing))+geom_boxplot()+facet_wrap(~Set)
+
+batsocialnz %>% drop_na(Pairing) %>% filter(Pairing == 'MF') %>% ggplot(aes(x=Sex,y=Total_Harvested, fill=Sex))+geom_boxplot()+labs(title="Sex differences while foraging in MF pairings",
+        x ="Sex", y = "Total_Harvesteds")+ theme(legend.position = "none")+theme(axis.text.x=element_text(size=15))+theme(axis.title.x=element_text(size=15,face="bold"))+theme(axis.title.y=element_text(size=12,face="bold"))+ theme(legend.key.size = unit(1.5, 'cm'))+theme(legend.title = element_text(size=15))+theme(legend.text = element_text(size=10))+ theme(plot.title=element_text(size=20))+ theme(plot.title=element_text(size=20))
+
+batsocialnz %>% drop_na(Pairing) %>% filter(Pairing == 'MF') %>% ggplot(aes(x=Sex,y=Total_Harvested, fill=Sex))+geom_boxplot()+labs(title="Sex differences while foraging in MF pairings",
+        x ="Sex", y = "Total_Harvesteds")+facet_wrap(~Set)+ theme(legend.position = "none")+theme(axis.text.x=element_text(size=15))+theme(axis.title.x=element_text(size=15,face="bold"))+theme(axis.title.y=element_text(size=12,face="bold"))+ theme(legend.key.size = unit(1.5, 'cm'))+theme(legend.title = element_text(size=15))+theme(legend.text = element_text(size=10))+ theme(plot.title=element_text(size=20))+ theme(plot.title=element_text(size=20))
+
+
+batsocialnz %>% drop_na(Pairing) %>% ggplot(aes(x=Pairing,y=Total_Harvested, fill=Sex))+geom_boxplot()+facet_wrap(~ID)+labs(title="Sex differences in foraging in MF pairings",
+        x ="Sex", y = "Giving-Up Densities")
+
+batsocialnz %>% drop_na(Pairing) %>% ggplot(aes(x=ID,y=Total_Harvested, fill=Sex))+geom_boxplot()+facet_wrap(~Pairing)+labs(title="Sex differences in foraging in MF pairings",
+        x ="Sex", y = "Giving-Up Densities")
+```
+
+
+T-tests
+
+```{r}
+#Preliminary GUDs
+batprelim_GUD_t1<-t.test(GUD ~ Richness, data = batprelim_l, var.equal = TRUE)
+batprelim_GUD_t1
+
+# Social GUDs
+batsocialnz
+
+bats_GUD_t1 <- t.test(GUD ~ Social, data = batsocialnz, var.equal = TRUE)
+bats_GUD_t1
+
+batsocialnz_paired<-batsocialnz %>% filter(Social == 'Paired')
+bats_GUD_t2 <-t.test(GUD ~ Sex, data = batsocialnz_paired, var.equal = TRUE)
+bats_GUD_t2 
+
+batsocialnz_male<-batsocialnz %>% filter(Sex == 'M')
+batsocialnz_female<-batsocialnz %>% filter(Sex == 'F')
+
+bats_GUD_t3 <-t.test(GUD ~ Social, data = batsocialnz_male, var.equal = TRUE)
+bats_GUD_t3 
+
+bats_GUD_t9 <-t.test(GUD ~ Social, data = batsocialnz_female, var.equal = TRUE)
+bats_GUD_t9 
+
+batsocialnz_MF<-batsocialnz_paired %>% filter(Pairing == 'MF')
+bats_GUD_t4 <-t.test(GUD ~ Sex, data = batsocialnz_MF, var.equal = TRUE)
+bats_GUD_t4 
+
+#batsocialnz_F1<-batsocialnz %>% filter(ID == 'F1 (Large)')
+#bats_GUD_t5 <-t.test(GUD ~ Social, data = batsocialnz_F1, var.equal = TRUE)
+#bats_GUD_t5 
+
+#batsocialnz_M2<-batsocialnz %>% filter(ID == 'M2 (Small)')
+#bats_GUD_t6 <-t.test(GUD ~ Social, data = batsocialnz_M2, var.equal = TRUE)
+#bats_GUD_t6 
+
+batsocialnz_M<-batsocialnz %>% filter(Sex == 'M')
+bats_GUD_t7 <-t.test(GUD ~ Social, data = batsocialnz_M, var.equal = TRUE)
+bats_GUD_t7
+
+bats_GUD_t8 <-t.test(GUD ~ Sex, data = batsocialnz_solitary, var.equal = TRUE)
+bats_GUD_t8
+
+batsocialnz_MF_1<-batsocialnz_paired %>% filter(Pairing == 'MF') %>% filter(Set == '1')
+bats_GUD_t12 <-t.test(GUD ~ Sex, data = batsocialnz_MF_1, var.equal = TRUE)
+bats_GUD_t12 
+
+batsocialnz_MF_3<-batsocialnz_paired %>% filter(Pairing == 'MF') %>% filter(Set == '3')
+bats_GUD_t13 <-t.test(GUD ~ Sex, data = batsocialnz_MF_3, var.equal = TRUE)
+bats_GUD_t13 
+```
+
+
+
+ANOVA
+```{r}
+#Preliminary GUDs
+batprelim_l
+
+batprelim_l.lm1<-lm(GUD~Richness*Trial*Sex+Cage+Mass+ID,batprelim_l)
+summary(batprelim_l.lm1)
+anova(batprelim_l.lm1)
+autoplot(batprelim_l.lm1)
+par(mfrow=c(1,2))
+plot(batprelim_l.lm1, which=c(4,5))
+
+batprelim_l.lm2<-lm(GUD~Richness+Trial+Sex,batprelim_l)
+summary(batprelim_l.lm2)
+anova(batprelim_l.lm2)
+autoplot(batprelim_l.lm2)
+par(mfrow=c(1,2))
+plot(batprelim_l.lm2, which=c(4,5))
+
+#Social GUDs
+batsocialnz
+
+batsocialnz.lm1<-lm(GUD~Sex+Social+Cage*ID,batsocialnz)
+summary(batsocialnz.lm1)
+anova(batsocialnz.lm1)
+autoplot(batsocialnz.lm1)
+par(mfrow=c(1,2))
+plot(batsocialnz.lm1, which=c(4,5))
+
+batsocialnz.lm2<-lm(GUD~Sex*Trial*Social,batsocialnz)
+summary(batsocialnz.lm2)
+anova(batsocialnz.lm2)
+autoplot(batsocialnz.lm2)
+par(mfrow=c(1,2))
+plot(batsocialnz.lm2, which=c(4,5))
+
+batsocialnz.lm3<-lm(GUD~Sex*Trial*Pairing,batsocialnz)
+summary(batsocialnz.lm3)
+anova(batsocialnz.lm3)
+autoplot(batsocialnz.lm3)
+par(mfrow=c(1,2))
+plot(batsocialnz.lm3, which=c(4,5))
+
+batsocialnz.lm4<-lm(GUD~Sex*Trial,batsocialnz_solitary)
+summary(batsocialnz.lm4)
+anova(batsocialnz.lm4)
+autoplot(batsocialnz.lm4)
+par(mfrow=c(1,2))
+plot(batsocialnz.lm4, which=c(4,5))
+
+batsocialnz.lm7<-lm(GUD~Sex*Social*Pairing+ID,batsocialnz)
+summary(batsocialnz.lm7)
+anova(batsocialnz.lm7)
+autoplot(batsocialnz.lm7)
+par(mfrow=c(1,2))
+plot(batsocialnz.lm7, which=c(4,5))
+```
+
+
+```{r}
+#ANCOVA
+
+batprelim.anc<-lm(GUD~Sex*Mass,batprelim_l)
+summary(batprelim.anc)
+anova(batprelim.anc)
+autoplot(batprelim.anc)
+par(mfrow=c(1,2))
+plot(batprelim.anc, which=c(4,5))
+
+batsocial.anc<-lm(GUD~Sex*Mass,batsocialnz)
+summary(batsocial.anc)
+anova(batsocial.anc)
+autoplot(batsocial.anc)
+par(mfrow=c(1,2))
+plot(batsocial.anc, which=c(4,5))
+
+batsocial.anc2<-lm(GUD~Sex*Mass,batsocialnz_solitary)
+summary(batsocial.anc2)
+anova(batsocial.anc2)
+autoplot(batsocial.anc2)
+par(mfrow=c(1,2))
+plot(batsocial.anc2, which=c(4,5))
+
+batsocial.anc3<-lm(GUD~Sex*Mass,batsocialnz)
+summary(batsocial.anc3)
+anova(batsocial.anc3)
+autoplot(batsocial.anc3)
+par(mfrow=c(1,2))
+plot(batsocial.anc3, which=c(4,5))
+
+```
+
+
+
+Ancova Plot
+
+```{r}
+batsocialnz
+batsocialnz %>% ggplot(aes(x=Mass,y=GUD,color=Sex))+geom_point()+geom_smooth(method='lm')+theme_minimal()
+batsocialnz %>% filter(Social == 'Solitary') %>% ggplot(aes(x=Mass,y=GUD,color=Sex))+geom_point()+geom_smooth(method='lm')+theme_minimal()
+ggplot(batsocialnz,aes(x=Mass,y=GUD))+geom_point()+geom_smooth(method='lm')+theme_minimal()
+
+batsocialnz %>% ggplot(aes(x=Mass,y=Per_Capita_GUD,color=Sex))+geom_point()+geom_smooth(method='lm')+theme_minimal()
+batsocialnz %>% filter(Social == 'Solitary') %>% ggplot(aes(x=Mass,y=GUD,color=Sex))+geom_point()+geom_smooth(method='lm')+theme_minimal()
+ggplot(batsocialnz,aes(x=Mass,y=Per_Capita_GUD))+geom_point()+geom_smooth(method='lm')+theme_minimal()
+```
+
+Extra pairing graphs
+
+```{r}
+
+
+batsocialnz  %>% ggplot(aes(x=Set,y=GUD))+geom_boxplot()+facet_wrap(~Pairing)
+
+
+batsocialnz %>% ggplot(aes(x=Pairing,y=GUD))+geom_boxplot()+facet_wrap(~Set)
+
+```
+
+
+Outlier Anovas etc.
+```{r}
+batsocialnz
+batsocialnz.lm8<-lm(Per_Capita_GUD~Social+Pairing*Set,batsocialnz_percapita)
+summary(batsocialnz.lm8)
+anova(batsocialnz.lm8)
+autoplot(batsocialnz.lm8)
+par(mfrow=c(1,2))
+plot(batsocialnz.lm1, which=c(4,5))
+
+batsocial.lm11<-lm(GUD~Social+Pairing*Set,batsocial)
+summary(batsocial.lm11)
+anova(batsocial.lm11)
+autoplot(batsocial.lm11)
+par(mfrow=c(1,2))
+plot(batsocial.lm11, which=c(4,5))
+
+batprelim_GUD_t1<-t.test(GUD ~ Richness, data = batprelim_l, var.equal = TRUE)
+batprelim_GUD_t1
+
+batsocialnz.lm50<-lm(Harvested~Social+Pairing*Set,batsocialnz)
+summary(batsocialnz.lm50)
+anova(batsocialnz.lm50)
+autoplot(batsocialnz.lm50)
+par(mfrow=c(1,2))
+plot(batsocialnz.lm50, which=c(4,5))
+```
+
+
+Preliminary poor/rich t-test
+
+```{r}
+batprelim
+batprelim_l
+
+Poor<- batprelim_l %>% filter(Richness == 'Poor')  %>% dplyr::select(GUD.P)
+Poor
+
+Rich<- batprelim_l %>% filter(Richness == 'Rich')  %>% dplyr::select(GUD.P)
+Rich
+
+res <- t.test(Poor$GUD.P, Rich$GUD.P, paired = TRUE)
+res
+```
+
+
+##Video Analysis!
+```{r}
+library(readr)
+Bat_Social_Video_Analysis_FINAL <- read_csv("~/R/Bats/Bat Social Video Analysis FINAL.csv")
+
+batvideo1<-Bat_Social_Video_Analysis_FINAL
+batvideo1
+```
+
+#summarizing data
+
+```{r}
+batvideo1
+summary(batvideo1)
+glimpse(batvideo1)
+tbl_df(batvideo1)
+names(batvideo1)
+head(batvideo1)
+dim(batvideo1)
+str(batvideo1)
+```
+
+
+```{r}
+batvideo1$ID<-factor(batvideo1$ID)
+batvideo1$Subject<-factor(batvideo1$Subject)
+batvideo1$Sex<-factor(batvideo1$Sex)
+batvideo1$Assigned_patch<-factor(batvideo1$Assigned_patch)
+batvideo1$Patch<-factor(batvideo1$Patch)
+batvideo1$Social<-factor(batvideo1$Social)
+batvideo1$Pairing<-factor(batvideo1$Pairing)
+batvideo1$Block<-factor(batvideo1$Block)
+batvideo1$Owned<-factor(batvideo1$Owned)
+
+batvideo1<-batvideo1 %>%
+  mutate(Social = recode(Social,
+                            "Y" = "Paired",
+                            "N" = "Solitary"))
+
+batvideo1<-batvideo1 %>%
+  mutate(Owned = recode(Owned,
+                            "Y" = "Starting patch",
+                            "N" = "Neighbor's patch"))
+
+batvideo1<- batvideo1 %>%  dplyr::rename(Set = Block)
+batvideo1
+```
+
+Removing Outliers
+```{r}
+batvideo1
+
+batvideonz<-batvideo1 %>%
+  filter(!row_number() %in% c(3,4,5,6,45,46,47,48))
+batvideonz
+
+batvideonz_paired<-batvideonz %>% filter(Social == 'Paired')
+batvideonz_solitary<-batvideonz %>% filter(Social == 'Solitary')
+batvideonz_males<-batvideonz %>% filter(Sex == 'M')
+batvideonz_males<-batvideonz %>% filter(Sex == 'F')
+batvideonz_MF<-batvideonz %>% filter(Social == 'Paired') %>% filter(Pairing == 'MF')
+```
+
+looking at distribution of data/normality tests
+
+```{r}
+batprelim_l
+batsocialnz
+batvideonz
+
+#preliminary data
+
+ggplot(batprelim_l,aes(x=GUD))+geom_histogram(bins=15)+geom_density(col=5)
+shapiro.test(batprelim_l$GUD)
+
+#Social data
+
+ggplot(batsocialnz,aes(x=GUD))+geom_histogram(bins=15)+geom_density(col=5)
+shapiro.test(batsocialnz$GUD)
+
+ggplot(batsocialnz,aes(x=Sqrt_GUD))+geom_histogram(bins=15)+geom_density(col=5)
+shapiro.test(batsocialnz$Sqrt_GUD)
+
+ggplot(batsocialnz,aes(x=Log_GUD))+geom_histogram(bins=15)+geom_density(col=5)
+shapiro.test(batsocialnz$Log_GUD)
+
+ggplot(batsocialnz,aes(x=GUD.P))+geom_histogram(bins=15)+geom_density(col=5)
+shapiro.test(batsocialnz$GUD.P)
+
+
+ggplot(batsocialnz,aes(x=Mass))+geom_histogram(bins=15)+geom_density(col=5)
+shapiro.test(batsocialnz$Mass)
+
+ggplot(batsocialnz,aes(x=Duration_foraged_per_day))+geom_histogram(bins=15)+geom_density(col=5)
+shapiro.test(batsocialnz$Duration_foraged_per_day)
+
+ggplot(batsocialnz,aes(x=Visits))+geom_histogram(bins=15)+geom_density(col=5)
+shapiro.test(batsocialnz$Visits)
+
+ggplot(batsocialnz,aes(x=Visit_mean_duration))+geom_histogram(bins=15)+geom_density(col=5)
+shapiro.test(batsocialnz$Visit_mean_duration)
+
+
+#video data
+
+ggplot(batvideonz,aes(x=Duration_foraged_per_patch))+geom_histogram(bins=15)+geom_density(col=5)
+shapiro.test(batvideonz$Duration_foraged_per_patch)
+
+ggplot(batvideonz,aes(x=Total_number_of_occurences))+geom_histogram(bins=15)+geom_density(col=5)
+shapiro.test(batvideonz$Total_number_of_occurences)
+
+ggplot(batvideonz,aes(x=Duration_mean))+geom_histogram(bins=15)+geom_density(col=5)
+shapiro.test(batvideonz$Duration_mean)
+
+
+```
+
+box-whisker plots
+
+Total Duration per patch: batvideo
+```{r}
+#ggplot(batsocialnz_solitary,aes(x=Trial,y=GUD, fill=Trial))+geom_boxplot()+facet_wrap(~Set)
+
+#batsocialnz_MF<-batsocialnz_paired %>% filter(Pairing == 'MF')
+
+ggplot(batvideonz,aes(x=Social,y=Duration_foraged_per_patch, fill=Social))+geom_boxplot()
+
+ggplot(batvideonz_paired,aes(x=Owned,y=Duration_foraged_per_patch, fill=Owned))+geom_boxplot()
+
+ggplot(batvideonz,aes(x=Sex,y=Duration_foraged_per_patch, fill=Sex))+geom_boxplot()
+
+ggplot(batvideonz_MF,aes(x=Sex,y=Duration_foraged_per_patch, fill=Sex))+geom_boxplot()
+
+ggplot(batvideonz,aes(x=Pairing,y=Duration_foraged_per_patch, fill=Pairing))+geom_boxplot()
+
+```
+
+Total foraged per day: batsocial
+```{r}
+batsocialnz
+
+ggplot(batsocialnz,aes(x=Social,y=Duration_foraged_per_day, fill=Social))+geom_boxplot()
+
+ggplot(batsocialnz,aes(x=Sex,y=Duration_foraged_per_day, fill=Sex))+geom_boxplot()
+
+ggplot(batsocialnz,aes(x=Pairing,y=Duration_foraged_per_day, fill=Pairing))+geom_boxplot()
+
+ggplot(batsocialnz,aes(x=Set,y=Duration_foraged_per_day))+geom_boxplot()+facet_wrap(~Pairing)
+ggplot(batsocialnz,aes(x=Pairing,y=Duration_foraged_per_day))+geom_boxplot()+facet_wrap(~Set)
+ggplot(batsocialnz_paired,aes(x=Set,y=Duration_foraged_per_day))+geom_boxplot()+facet_wrap(~Pairing)
+
+batsocialnz %>% ggplot(aes(x=Mass,y=Duration_foraged_per_day))+geom_point()+geom_smooth(method='lm')+theme_minimal()
+batsocialnz %>% ggplot(aes(x=Mass,y=Duration_foraged_per_day,color=Sex))+geom_point()+geom_smooth(method='lm')+theme_minimal()
+
+ggplot(batsocialnz,aes(x=Cage,y=Proportion_foraged, fill=Cage))+geom_boxplot()+facet_wrap(~Social)
+
+batsocialnz_solitary %>% ggplot(aes(x=Duration_foraged_per_day,y=GUD))+geom_point()+geom_smooth(method='lm')+theme_minimal()
+batsocialnz_solitary %>% ggplot(aes(x=Visits,y=GUD))+geom_point()+geom_smooth(method='lm')+theme_minimal()
+batsocialnz_solitary %>% ggplot(aes(x=Visit_mean_duration,y=GUD))+geom_point()+geom_smooth(method='lm')+theme_minimal()
+
+```
+
+Proportion graphs
+```{r}
+#ggplot(batsocialnz_solitary,aes(x=Trial,y=GUD, fill=Trial))+geom_boxplot()+facet_wrap(~Set)
+
+ggplot(batvideonz_paired,aes(x=Owned,y=Individual_foraging_per_patch, fill=Owned))+geom_boxplot()
+
+ggplot(batvideonz_paired,aes(x=Patch,y=Patch_foraging_per_individual, fill=Patch))+geom_boxplot()
+```
+This has served its purpose in making a new data frame
+```{r}
+batvideo1
+batsocial
+
+#Duration_foraged_available_patches_df<- batvideo1  %>% filter(Social=='Solitary' | Patch=='1')
+
+#Duration_foraged_available_patches_df
+
+#Duration_foraged_available_patches_col<-Duration_foraged_available_patches_df %>% dplyr::select(Duration_foraged_per_day)
+
+#Duration_foraged_available_patches_col
+
+#batsocial<- batsocial %>%
+ #       mutate(Duration_foraged_available_patches_col)
+
+
+#Number_of_visits_df<- batvideo1  %>% filter(Social=='Solitary' | Patch=='1')
+
+#Number_of_visits_df
+
+#Number_of_visits_col<-Number_of_visits_df %>% dplyr::select(Visits_Available_Patches)
+
+#Number_of_visits_col
+
+#batsocial<- batsocial %>%
+        #mutate(Number_of_visits_col)
+#batsocial
+
+#Total_Duration_Mean_df<- batvideo1  %>% filter(Social=='Solitary' | Patch=='1')
+
+#Total_Duration_Mean_df
+
+#Total_Duration_Mean_col<-Total_Duration_Mean_df %>% dplyr::select(Total_Duration_Mean)
+
+#Total_Duration_Mean_col
+
+#batsocial<- batsocial %>%
+        #mutate(Total_Duration_Mean_col)
+#batsocial
+batsocialnz
+```
+This too
+```{r}
+#write.csv(batsocial,"C:\\Users\\almad\\Downloads\\newbatsocial3.csv", row.names = FALSE)
+```
+
+
+Anovas using batsocial (no patches) Duration Foraged
+```{r}
+batsocialnz
+batsocialnz.lm20<-lm(Duration_foraged_per_day~Social+Pairing*Set,batsocialnz)
+summary(batsocialnz.lm20)
+anova(batsocialnz.lm20)
+autoplot(batsocialnz.lm20)
+par(mfrow=c(1,2))
+plot(batsocialnz.lm20, which=c(4,5))
+
+
+batsocial.anc5<-lm(Duration_foraged_per_day~Sex*Mass,batsocialnz)
+summary(batsocial.anc5)
+anova(batsocial.anc5)
+autoplot(batsocial.anc5)
+par(mfrow=c(1,2))
+plot(batsocial.anc5, which=c(4,5))
+
+batsocialnz.lm21<-lm(Duration_foraged_per_day~Sex+Sex/factor(ID),batsocialnz)
+summary(batsocialnz.lm21)
+anova(batsocialnz.lm21)
+autoplot(batsocialnz.lm21)
+par(mfrow=c(1,2))
+plot(batsocialnz.lm21, which=c(4,5))
+
+
+batsocialnz.lm41<-lm(GUD~Duration_foraged_per_day,batsocialnz_solitary)
+summary(batsocialnz.lm41)
+anova(batsocialnz.lm41)
+autoplot(batsocialnz.lm41)
+par(mfrow=c(1,2))
+plot(batsocialnz.lm41, which=c(4,5))
+
+
+```
+Trying to find better fit for GUD vs. time foraged
+
+```{r}
+overdisp_fun <- function(model) {
+  rdf <- df.residual(model)
+  rp <- residuals(model,type="pearson")
+  Pearson.chisq <- sum(rp^2)
+  prat <- Pearson.chisq/rdf
+  pval <- pchisq(Pearson.chisq, df=rdf, lower.tail=FALSE)
+  c(chisq=Pearson.chisq,ratio=prat,rdf=rdf,p=pval)
+}
+
+
+batsocialnz
+
+#raw
+batsocialnz.lm41<-lm(GUD~Duration_foraged_per_day,batsocialnz_solitary)
+summary(batsocialnz.lm41)
+anova(batsocialnz.lm41)
+autoplot(batsocialnz.lm41)
+par(mfrow=c(1,2))
+plot(batsocialnz.lm41, which=c(4,5))
+
+
+#log
+batsocialnz.lm46<-lm(Log_GUD~Duration_foraged_per_day,batsocialnz_solitary)
+summary(batsocialnz.lm46)
+anova(batsocialnz.lm46)
+autoplot(batsocialnz.lm46)
+par(mfrow=c(1,2))
+plot(batsocialnz.lm46, which=c(4,5))
+
+
+#sqrt
+batsocialnz.lm47<-lm(Sqrt_GUD~Duration_foraged_per_day,batsocialnz_solitary)
+summary(batsocialnz.lm47)
+anova(batsocialnz.lm47)
+autoplot(batsocialnz.lm41)
+par(mfrow=c(1,2))
+plot(batsocialnz.lm47, which=c(4,5))
+
+
+#prop
+batsocialnz.lm48<-lm(Sqrt_GUD~Duration_foraged_per_day,batsocialnz_solitary)
+summary(batsocialnz.lm48)
+anova(batsocialnz.lm48)
+autoplot(batsocialnz.lm48)
+par(mfrow=c(1,2))
+plot(batsocialnz.lm48, which=c(4,5))
+
+
+m1 <- glm(GUD.P ~ Duration_foraged_per_day, data = batsocialnz_solitary, family = binomial)
+summary(m1)
+anova(m1)
+autoplot(m1)
+par(mfrow=c(1,2))
+plot(m1, which=c(4,5))
+overdisp_fun(m1)
+print(summary(m1), digits = 2, signif.stars=FALSE)
+
+batsocialnz_solitary %>% ggplot(aes(x=Duration_foraged_per_day,y=GUD))+geom_point()+geom_smooth(method='lm')+theme_minimal()
+batsocialnz_solitary %>% ggplot(aes(x=Duration_foraged_per_day,y=GUD.P))+geom_point()+geom_smooth(method='lm')+theme_minimal()
+
+batsocialnz_solitary %>% ggplot(aes(x=Duration_foraged_per_day,y=GUD.P))+geom_point()+stat_smooth(method = "glm", method.args = list(family=binomial(link="cauchit")), se = TRUE)+theme_minimal()
+```
+
+```{r}
+batsocial_t5<-t.test(Proportion_foraged ~ Cage, data = batsocialnz_solitary, var.equal = TRUE)
+batsocial_t5
+
+batsocial_t6<-t.test(Proportion_foraged ~ Cage, data = batsocialnz_paired, var.equal = TRUE)
+batsocial_t6
+
+
+batvideo_t5<-t.test(Individual_foraging_per_patch ~ Owned, data = batvideonz_paired, var.equal = TRUE)
+batvideo_t5
+
+batvideo_t6<-t.test(Patch_foraging_per_individual ~ Patch, data = batvideonz_paired, var.equal = TRUE)
+batvideo_t6
+
+
+```
+Times visited
+```{r}
+batsocialnz
+
+batsocialnz.lm23<-lm(Visits~Social+Pairing*Set,batsocialnz)
+summary(batsocialnz.lm23)
+anova(batsocialnz.lm23)
+autoplot(batsocialnz.lm23)
+par(mfrow=c(1,2))
+plot(batsocialnz.lm23, which=c(4,5))
+
+batsocial.anc6<-lm(Visits~Sex*Mass,batsocialnz)
+summary(batsocial.anc6)
+anova(batsocial.anc6)
+autoplot(batsocial.anc6)
+par(mfrow=c(1,2))
+plot(batsocial.anc6, which=c(4,5))
+
+batsocialnz.lm24<-lm(Visits~Sex+Sex/factor(ID),batsocialnz)
+summary(batsocialnz.lm24)
+anova(batsocialnz.lm24)
+autoplot(batsocialnz.lm24)
+par(mfrow=c(1,2))
+plot(batsocialnz.lm24, which=c(4,5))
+
+ggplot(batsocialnz,aes(x=Social,y=Visits))+geom_boxplot()
+ggplot(batsocialnz,aes(x=Social,y=Visits))+geom_boxplot()+facet_wrap(~Set)
+ggplot(batsocialnz,aes(x=Set,y=Visits))+geom_boxplot()+facet_wrap(~Social)
+```
+
+
+Mean Visit Duration
+```{r}
+batsocialnz
+
+batsocialnz.lm25<-lm(Visit_mean_duration~Social+Pairing*Set,batsocialnz)
+summary(batsocialnz.lm25)
+anova(batsocialnz.lm25)
+autoplot(batsocialnz.lm25)
+par(mfrow=c(1,2))
+plot(batsocialnz.lm25, which=c(4,5))
+
+batsocial.anc7<-lm(Visit_mean_duration~Sex*Mass,batsocialnz)
+summary(batsocial.anc7)
+anova(batsocial.anc7)
+autoplot(batsocial.anc7)
+par(mfrow=c(1,2))
+plot(batsocial.anc7, which=c(4,5))
+
+batsocialnz.lm26<-lm(Visit_mean_duration~Sex+Sex/factor(ID),batsocialnz)
+summary(batsocialnz.lm26)
+anova(batsocialnz.lm26)
+autoplot(batsocialnz.lm26)
+par(mfrow=c(1,2))
+plot(batsocialnz.lm26, which=c(4,5))
+```
+
+
+
+
+Anovas using batvideo
+```{r}
+batvideonz.lm30<-lm(Duration_foraged_per_patch~Owned+Pairing*Set,batvideonz_paired)
+summary(batvideonz.lm30)
+anova(batvideonz.lm30)
+autoplot(batvideonz.lm30)
+par(mfrow=c(1,2))
+plot(batvideonz.lm30, which=c(4,5))
+
+batvideonz.lm31<-lm(Total_number_of_occurences~Owned+Pairing*Set,batvideonz_paired)
+summary(batvideonz.lm31)
+anova(batvideonz.lm31)
+autoplot(batvideonz.lm31)
+par(mfrow=c(1,2))
+plot(batvideonz.lm31, which=c(4,5))
+
+batvideonz.lm32<-lm(Duration_mean~Owned+Pairing*Set,batvideonz_paired)
+summary(batvideonz.lm32)
+anova(batvideonz.lm32)
+autoplot(batvideonz.lm32)
+par(mfrow=c(1,2))
+plot(batvideonz.lm32, which=c(4,5))
+
+ggplot(batvideonz_paired,aes(x=Owned,y=Total_number_of_occurences))+geom_boxplot()
+```
+Patch equitability in a social vs. solitary context
+```{r}
+batvideonz.lm33<-lm(Duration_foraged_per_patch~Patch*Social,batvideonz)
+summary(batvideonz.lm33)
+anova(batvideonz.lm33)
+autoplot(batvideonz.lm33)
+par(mfrow=c(1,2))
+plot(batvideonz.lm33, which=c(4,5))
+
+batvideonz.lm34<-lm(Total_number_of_occurences~Patch*Social,batvideonz)
+summary(batvideonz.lm34)
+anova(batvideonz.lm34)
+autoplot(batvideonz.lm34)
+par(mfrow=c(1,2))
+plot(batvideonz.lm34, which=c(4,5))
+
+batvideonz.lm35<-lm(Duration_mean~Patch*Social,batvideonz)
+summary(batvideonz.lm35)
+anova(batvideonz.lm35)
+autoplot(batvideonz.lm35)
+par(mfrow=c(1,2))
+plot(batvideonz.lm35, which=c(4,5))
+
+
+ggplot(batvideonz,aes(x=Patch,y=Duration_mean))+geom_boxplot()+facet_wrap(~Social)
+```
+
+
+
+##Elsevier
+ELSEVIER theme
+
+```{r}
+theme_elsevier <- function(base_size = 7, base_family = "") {
+  half_line <- base_size / 2
+
+  plot_bg <- "white"
+  attr(plot_bg, "inbotheme") <- "elsevier"
+  theme(
+    line = element_line(
+      colour = "black", linewidth = 0.5, linetype = 1, lineend = "butt"
+    ),
+    rect = element_rect(
+      fill = "white", colour = "black", linewidth = 0.5, linetype = 1
+    ),
+    text = element_text(
+      family = "serif", face = "plain", colour = "black", size = 14,
+      hjust = 0.5, vjust = 0.5, angle = 0, lineheight = 0.9, margin = margin(),
+      debug = FALSE
+    ),
+
+    axis.line = element_line(),
+    axis.line.x = element_line(),
+    axis.line.y = element_line(),
+    axis.text =  element_text(colour = "black"),
+    axis.text.x = element_text(
+      margin = margin(t = 0.8 * half_line / 2),
+      vjust = 1
+    ),
+    axis.text.y = element_text(
+      margin = margin(r = 0.8 * half_line / 2),
+      hjust = 1
+    ),
+    axis.ticks = element_line(colour = "black"),
+    axis.ticks.length = unit(-0.15, "cm"),
+    axis.title.x = element_text(
+      margin = margin(t = 0.8 * half_line, b = 0.8 * half_line / 2),
+      colour = "black"
+    ),
+    axis.title.y = element_text(
+      margin = margin(r = 0.8 * half_line, l = 0.8 * half_line / 2),
+      angle = 90,
+      colour = "black"
+    ),
+
+    legend.background = element_rect(colour = NA),
+    legend.box = NULL,
+    legend.direction = NULL,
+    legend.justification = "center",
+    legend.key = element_rect(colour = "grey80"),
+    legend.key.size = unit(1.2, "lines"),
+    legend.key.height = NULL,
+    legend.key.width = NULL,
+    legend.margin = margin(half_line, half_line, half_line, half_line),
+    legend.position = "right",
+    legend.text = element_text(size = rel(0.8)),
+    legend.text.align = NULL,
+    legend.title = element_text(
+      size = rel(0.8), face = "bold", hjust = 0, colour = "black"
+    ),
+    legend.title.align = NULL,
+
+    panel.background = element_rect(fill = "white", colour = NA),
+    panel.border = element_rect(fill = NA, colour = "grey50"),
+    panel.grid = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.spacing = unit(half_line, "pt"),
+    panel.spacing.x = NULL,
+    panel.spacing.y = NULL,
+    panel.ontop = FALSE,
+
+    plot.background = element_rect(colour = "white", fill = plot_bg),
+    plot.margin = margin(half_line, half_line, half_line, half_line),
+    plot.title = element_text(size = rel(1.2), hjust = 0.01, vjust = -4),
+    plot.subtitle = element_text(
+      hjust = 0, vjust = 1, margin = margin(b = half_line)
+    ),
+    plot.tag = element_text(size = rel(1.2), hjust = 0.5, vjust = 0.5),
+    plot.tag.position =  "topleft",
+    plot.caption = element_text(
+      size = rel(0.8), hjust = 1, vjust = 1, margin = margin(t = half_line)
+    ),
+
+    strip.background = element_rect(fill = "grey80", colour = "grey50"),
+    strip.text = element_text(size = rel(0.8), colour = "black"),
+    strip.text.x = element_text(
+      margin = margin(t = half_line, b = half_line),
+      colour = "black"
+    ),
+    strip.text.y = element_text(
+      margin = margin(l = half_line, r = half_line), angle = -90,
+      colour = "black"
+    ),
+    strip.switch.pad.grid = unit(0.1, "cm"),
+    strip.switch.pad.wrap = unit(0.1, "cm"),
+
+    complete = TRUE
+  )
+}
+```
+
+
+Extra ANOVAs
+```{r}
+#GUDS
+batsocialnz_mf<-batsocialnz %>% filter(Pairing == 'MF')
+
+batsocialnz
+batsocial.lm83<-lm(Duration_foraged_per_day~Sex*Social,batsocialnz_mf)
+summary(batsocial.lm83)
+anova(batsocial.lm83)
+autoplot(batsocial.lm83)
+par(mfrow=c(1,2))
+plot(batsocial.lm83, which=c(4,5))
+
+ggplot(batsocialnz,aes(x=Pairing,y=Duration_foraged_per_day,fill = Sex))+geom_boxplot()+facet_wrap(~Social)
+ggplot(batsocialnz,aes(x=Social,y=Duration_foraged_per_day,fill = Sex))+geom_boxplot()+facet_wrap(~Pairing)
+```
+Effect of 24 hour light
+```{r}
+batsocialnz_1_2<-batsocialnz %>% filter(Set != 3)
+batsocialnz_1_2
+
+batsocialnz_3<-batsocialnz %>% filter(Set == 3)
+batsocialnz_3
+
+batsocialnz_3_normal<-batsocialnz_3 %>% filter(Day < 7)
+batsocialnz_3_normal
+
+batsocialnz_3_light<-batsocialnz_3 %>% filter(Day > 6)
+batsocialnz_3_light
+
+light_GUDs <- t.test(batsocialnz_3_normal$GUD, batsocialnz_3_light$GUD, paired = FALSE)
+light_GUDs
+
+light_time <- t.test(batsocialnz_3_normal$Duration_foraged_per_day, batsocialnz_3_light$Duration_foraged_per_day, paired = FALSE)
+light_time
+
+light_visits <- t.test(batsocialnz_3_normal$Visits, batsocialnz_3_light$Visits, paired = FALSE)
+light_visits
+```
+
+##Anovas for manuscript
+
+#Bat foraging preference
+```{r}
+batsocialnz
+
+##Patch Quality preference
+res <- t.test(Poor$GUD.P, Rich$GUD.P, paired = TRUE)
+res
+
+#finding if males are bigger than females
+batsocialnz_initial_mass<-batsocialnz_paired %>% filter(Trial == 1)
+batsocialnz_initial_mass
+
+
+batsocial.t20<-t.test(Mass ~ Sex, data = batsocialnz_initial_mass, var.equal = TRUE)
+batsocial.t20
+
+#Which sex foraged more food?
+batsocial.t21<-t.test(GUD ~ Sex, data = batsocial, var.equal = TRUE)
+batsocial.t21
+
+#Difference in foraging strategies between males/females?
+batprelim.lm90<-lm(GUD~Sex*Richness,batprelim_l)
+summary(batprelim.lm90)
+anova(batprelim.lm90)
+autoplot(batprelim.lm90)
+par(mfrow=c(1,2))
+plot(batprelim.lm90, which=c(4,5))
+
+#size differences
+
+
+##GUDs Vs. other foraging metrics with Sex ANCOVAs
+
+#Time foraged w/sex
+batsocialnz.lm70<-lm(Sqrt_GUD~Sex*Duration_foraged_per_day,batsocialnz_solitary)
+summary(batsocialnz.lm70)
+anova(batsocialnz.lm70)
+autoplot(batsocialnz.lm70)
+par(mfrow=c(1,2))
+plot(batsocialnz.lm70, which=c(4,5))
+
+#Number of visits w/sex
+batsocialnz.lm71<-lm(GUD~Sex*Visits,batsocialnz_solitary)
+summary(batsocialnz.lm71)
+anova(batsocialnz.lm71)
+autoplot(batsocialnz.lm71)
+par(mfrow=c(1,2))
+plot(batsocialnz.lm71, which=c(4,5))
+
+#mean visit time w/sex
+batsocialnz.lm72<-lm(Sqrt_GUD~Sex*Visit_mean_duration,batsocialnz_solitary)
+summary(batsocialnz.lm72)
+anova(batsocialnz.lm72)
+autoplot(batsocialnz.lm72)
+par(mfrow=c(1,2))
+plot(batsocialnz.lm72, which=c(4,5))
+```
+
+#Sex
+```{r}
+##Sex VS. Mass
+
+#GUDS
+batsocial.anc2<-lm(GUD~Sex*Mass,batsocialnz_solitary)
+summary(batsocial.anc2)
+anova(batsocial.anc2)
+autoplot(batsocial.anc2)
+par(mfrow=c(1,2))
+plot(batsocial.anc2, which=c(4,5))
+
+#Duration foraged
+batsocial.anc5<-lm(Duration_foraged_per_day~Sex*Mass,batsocialnz)
+summary(batsocial.anc5)
+anova(batsocial.anc5)
+autoplot(batsocial.anc5)
+par(mfrow=c(1,2))
+plot(batsocial.anc5, which=c(4,5))
+
+#Number of visits
+batsocial.anc6<-lm(Visits~Sex*Mass,batsocialnz)
+summary(batsocial.anc6)
+anova(batsocial.anc6)
+autoplot(batsocial.anc6)
+par(mfrow=c(1,2))
+plot(batsocial.anc6, which=c(4,5))
+
+#Mean visitation time
+batsocial.anc7<-lm(Visit_mean_duration~Sex*Mass,batsocialnz)
+summary(batsocial.anc7)
+anova(batsocial.anc7)
+autoplot(batsocial.anc7)
+par(mfrow=c(1,2))
+plot(batsocial.anc7, which=c(4,5))
+ 
+##Sex Vs. ID
+
+#GUDs
+batsocialnz.lm15<-lm(GUD~Sex+Sex/factor(ID),batsocialnz_solitary)
+summary(batsocialnz.lm15)
+anova(batsocialnz.lm15)
+autoplot(batsocialnz.lm15)
+par(mfrow=c(1,2))
+plot(batsocialnz.lm15, which=c(4,5))
+
+#Duration foraged
+batsocialnz.lm21<-lm(Duration_foraged_per_day~Sex+Sex/factor(ID),batsocialnz)
+summary(batsocialnz.lm21)
+anova(batsocialnz.lm21)
+autoplot(batsocialnz.lm21)
+par(mfrow=c(1,2))
+plot(batsocialnz.lm21, which=c(4,5))
+
+#Number of visits
+batsocialnz.lm23<-lm(Visits~Sex+Sex/factor(ID),batsocialnz)
+summary(batsocialnz.lm23)
+anova(batsocialnz.lm23)
+autoplot(batsocialnz.lm23)
+par(mfrow=c(1,2))
+plot(batsocialnz.lm23, which=c(4,5))
+
+#Mean visitation time
+batsocialnz.lm22<-lm(Visit_mean_duration~Sex+Sex/factor(ID),batsocialnz)
+summary(batsocialnz.lm22)
+anova(batsocialnz.lm22)
+autoplot(batsocialnz.lm22)
+par(mfrow=c(1,2))
+plot(batsocialnz.lm22, which=c(4,5))
+```
+
+#Social Context
+```{r}
+##Social vs. Pairing vs. Set
+
+#GUDs
+batsocialnz.lm9<-lm(GUD~Social+Pairing*Set,batsocialnz)
+summary(batsocialnz.lm9)
+anova(batsocialnz.lm9)
+autoplot(batsocialnz.lm9)
+par(mfrow=c(1,2))
+plot(batsocialnz.lm9, which=c(4,5))
+
+#Time foraged
+batsocialnz
+batsocialnz.lm20<-lm(Duration_foraged_per_day~Social+Pairing*Set,batsocialnz)
+summary(batsocialnz.lm20)
+anova(batsocialnz.lm20)
+autoplot(batsocialnz.lm20)
+par(mfrow=c(1,2))
+plot(batsocialnz.lm20, which=c(4,5))
+
+#Number of patch visits
+batsocialnz.lm23<-lm(Visits~Social+Pairing*Set,batsocialnz)
+summary(batsocialnz.lm23)
+anova(batsocialnz.lm23)
+autoplot(batsocialnz.lm23)
+par(mfrow=c(1,2))
+plot(batsocialnz.lm23, which=c(4,5))
+
+#Mean Visit duration
+batsocialnz.lm24<-lm(Visit_mean_duration~Social+Pairing*Set,batsocialnz)
+summary(batsocialnz.lm24)
+anova(batsocialnz.lm24)
+autoplot(batsocialnz.lm24)
+par(mfrow=c(1,2))
+plot(batsocialnz.lm24, which=c(4,5))
+
+
+#Patch equitability
+
+#Time foraged
+batvideonz.lm33<-lm(Duration_foraged_per_patch~Patch*Social,batvideonz)
+summary(batvideonz.lm33)
+anova(batvideonz.lm33)
+autoplot(batvideonz.lm33)
+par(mfrow=c(1,2))
+plot(batvideonz.lm33, which=c(4,5))
+
+#Number of patch visits
+batvideonz.lm34<-lm(Total_number_of_occurences~Patch*Social,batvideonz)
+summary(batvideonz.lm34)
+anova(batvideonz.lm34)
+autoplot(batvideonz.lm34)
+par(mfrow=c(1,2))
+plot(batvideonz.lm34, which=c(4,5))
+
+#Mean patch visit length
+batvideonz.lm35<-lm(Duration_mean~Patch*Social,batvideonz)
+summary(batvideonz.lm35)
+anova(batvideonz.lm35)
+autoplot(batvideonz.lm35)
+par(mfrow=c(1,2))
+plot(batvideonz.lm35, which=c(4,5))
+
+
+##Patch ownership
+
+#Time foraged
+batvideonz.lm30<-lm(Duration_foraged_per_patch~Owned,batvideonz_paired)
+summary(batvideonz.lm30)
+anova(batvideonz.lm30)
+autoplot(batvideonz.lm30)
+par(mfrow=c(1,2))
+plot(batvideonz.lm30, which=c(4,5))
+
+#Number of patch visits
+batvideonz.lm31<-lm(Total_number_of_occurences~Owned,batvideonz_paired)
+summary(batvideonz.lm31)
+anova(batvideonz.lm31)
+autoplot(batvideonz.lm31)
+par(mfrow=c(1,2))
+plot(batvideonz.lm31, which=c(4,5))
+
+#Mean patch visit length
+batvideonz.lm32<-lm(Duration_mean~Owned,batvideonz_paired)
+summary(batvideonz.lm32)
+anova(batvideonz.lm32)
+autoplot(batvideonz.lm32)
+par(mfrow=c(1,2))
+plot(batvideonz.lm32, which=c(4,5))
+```
+
+Extra Plots
+```{r}
+ggplot(batsocialnz_solitary,aes(x=Sex,y=GUD,fill=Sex))+geom_boxplot()+labs(
+        x ="Sex", y = "Giving-Up Densities")
+
+ggplot(batsocialnz,aes(x=Social,y=GUD))+geom_boxplot()+labs(
+        x ="Social", y = "GUDs")+ theme(legend.position = "none")+theme(axis.text.x=element_text(size=15))+theme(axis.title.x=element_text(size=15,face="bold"))+theme(axis.title.y=element_text(size=12,face="bold"))+ theme(legend.key.size = unit(1.5, 'cm'))+theme(legend.title = element_text(size=15))+theme(legend.text = element_text(size=10))+ theme(plot.title=element_text(size=20))
+
+batsocialnz %>% filter %>% ggplot(aes(x=Set,y=GUD))+geom_boxplot()+facet_wrap(~Pairing)
+
+ggplot(batprelim_l,aes(x=Richness,y=Individual_foraging_per_patch))+geom_boxplot()+labs(y="Proportion Harvested")+ theme(legend.position = "none")+theme(axis.text.x=element_text(size=15))+theme(axis.title.x=element_text(size=15,face="bold"))+theme(axis.title.y=element_text(size=12,face="bold"))+ theme(legend.key.size = unit(1.5, 'cm'))+theme(legend.title = element_text(size=15))+theme(legend.text = element_text(size=10))+ theme(plot.title=element_text(size=20))
+
+batsocialnz %>% filter(Social == 'Solitary') %>% ggplot(aes(x=Mass,y=GUD,color=Sex))+geom_point()+geom_smooth(method='lm')+theme_minimal()
+
+batsocialnz %>% ggplot(aes(x=Mass,y=Duration_foraged_per_day,color=Sex))+geom_point()+geom_smooth(method='lm')+theme_minimal()
+
+batsocialnz %>% ggplot(aes(x=Pairing,y=GUD))+geom_boxplot()
+```
+
+
+Plots for manuscript
+
+```{r}
+#crayfish2
+
+#ggplot(crayfish2,aes(x=Richness,y=GUDs,fill=Species))+geom_violin(trim=FALSE,show.legend=FALSE)+geom_boxplot(show.legend=FALSE,width=0.1,fill="white")+facet_wrap(~Species)+theme(strip.text.x = element_blank())+labs(title="(a)", y = "Average GUD (#bloodworms)")+ scale_fill_manual(values=c("#F8766D","#00BFC4"))+ scale_x_discrete(labels=c("HIGH" = "High", "LOW" = "Low")) + theme_elsevier()+ theme(legend.position = "none")+theme(
+# strip.background = element_blank(),
+  # strip.text.x = element_blank())
+
+#cray_gud_mass<-ggplot(crayfish,aes(x=Mass,y=G,color=Species))+geom_point()+geom_smooth(method='lm')+labs(title="(a)",y = "Average GUDs (#bloodworms)",x=NULL)+scale_color_discrete(labels=c('F. rusticus', 'F. propinquus'))+theme_elsevier()+ theme(legend.position = "none")
+#cray_gud_mass
+
+#cowplot::plot_grid(craygv, crayev,crayov, align = "v", ncol = 1, rel_heights = c(0.33,0.33,0.33))
+#cowplot::plot_grid(ANCOVA_legend,ANCOVA_plots,rel_heights = c(0.04,1),ncol=1)
+#cowplot::plot_grid(cray_gud_mass, cray_gud_body,cray_object_mass,cray_object_body)
+```
+
+
+#Bat foraging preference
+```{r}
+##Poor/rich violin plot
+ggplot(batprelim_l,aes(x=Richness,y=Individual_foraging_per_patch))+geom_violin(trim=FALSE,show.legend=FALSE)+geom_boxplot(show.legend=FALSE,width=0.1,fill="white")+labs(y = "Proportion smoothie harvested") + theme_elsevier()+ theme(legend.position = "none")+theme(
+ strip.background = element_blank(),
+   strip.text.x = element_blank())
+
+## Combined GUDs vs. Video metrics
+
+#Object for legend
+bat_gud_mass_1<-ggplot(batsocialnz_solitary,aes(x=Mass,y=GUD,color=Sex))+geom_point()+geom_smooth(method='lm')+labs(title="(a)",y = "Remaining smoothie (g)",x=NULL)+scale_color_discrete(labels=c('Male', 'Female'))+theme_elsevier()+ theme(legend.position = "top")
+bat_gud_mass_1
+
+#GUDs vs. time foraging
+bat_gud_time<-ggplot(batsocialnz_solitary,aes(x=Duration_foraged_per_day,y=Sqrt_GUD,color=Sex))+geom_point()+geom_smooth(method='lm')+labs(title="(a)",y = "Remaining smoothie (sqrt of g)",x="Time spent foraging (s)")+theme_elsevier()+ theme(legend.position = "none")
+bat_gud_time
+
+#Guds vs. number of patch visits
+bat_gud_visitn<-ggplot(batsocialnz_solitary,aes(x=Visits,y=GUD,color=Sex))+geom_point()+geom_smooth(method='lm')+labs(title="(b)",y = "Remaining smoothie (g)",x="Number of patch visits")+theme_elsevier()+ theme(legend.position = "none")
+bat_gud_visitn
+
+#GUD vs. mean patch visit time
+bat_gud_visitl<-ggplot(batsocialnz_solitary,aes(x=Visit_mean_duration,y=Sqrt_GUD,color=Sex))+geom_point()+geom_smooth(method='lm')+labs(title="(c)",y = "Remaining smoothie (g)",x="Mean length of patch visits (s)")+theme_elsevier()+ theme(legend.position = "none")
+bat_gud_time
+
+ANCOVA_legend <- get_legend(bat_gud_mass_1)
+foraging_plots<-cowplot::plot_grid(bat_gud_time, bat_gud_visitn,align = "h", nrow = 1)
+cowplot::plot_grid(ANCOVA_legend,foraging_plots,rel_heights = c(0.04,1),ncol=1)
+
+foraging_plots<-cowplot::plot_grid(bat_gud_time, bat_gud_visitn, bat_gud_visitl,align = "v", ncol = 1)
+cowplot::plot_grid(ANCOVA_legend,foraging_plots,rel_heights = c(0.04,1),ncol=1)
+```
+
+#Sex
+```{r}
+batsocialnz
+
+##Sex/GUD box whisker plot
+ggplot(batsocialnz_solitary,aes(x=Sex,y=GUD,fill=Sex))+geom_violin(trim=FALSE,show.legend=FALSE)+geom_boxplot(show.legend=FALSE,width=0.1,fill="white")+theme(strip.text.x = element_blank())+labs(y = "Remaining smoothie (g)")+theme_elsevier()+ theme(legend.position = "none")+theme(
+strip.background = element_blank(),
+strip.text.x = element_blank())
+
+
+##Combined Sex/mass ANCOVA plots
+
+#cray_gud_mass_1<-ggplot(crayfish,aes(x=Mass,y=G,color=Species))+geom_point()+geom_smooth(method='lm')+labs(title="(a)",y = "Average GUDs (#bloodworms)",x=NULL)+scale_color_discrete(labels=c('F. rusticus', 'F. propinquus'))+theme_elsevier()+ theme(legend.position = "top")
+#cray_gud_mass_1
+
+#cray_gud_mass<-ggplot(crayfish,aes(x=Mass,y=G,color=Species))+geom_point()+geom_smooth(method='lm')+labs(title="(a)",y = "Average GUDs (#bloodworms)",x=NULL)+scale_color_discrete(labels=c('F. rusticus', 'F. propinquus'))+theme_elsevier()+ theme(legend.position = "none")
+#cray_gud_mass
+
+#cray_gud_body<-ggplot(crayfish,aes(x=Body,y=G,color=Species))+geom_point()+geom_smooth(method='lm')+labs(title="(b)",y = NULL,x=NULL)+scale_color_discrete(labels=c('F. rusticus', 'F. propinquus'))+theme_elsevier()+ theme(legend.position = "none")
+
+#cray_object_mass<-ggplot(crayfish,aes(x=Mass,y=O,color=Species))+geom_point()+geom_smooth(method='lm')+labs(title="(c)",y = "Average boldness towards novel object")+scale_color_discrete(labels=c('Invasives', 'Natives'))+theme_elsevier()+ theme(legend.position = #"none")
+
+#cray_object_body<-ggplot(crayfish,aes(x=Body,y=O,color=Species))+geom_point()+geom_smooth(method='lm')+labs(title="(d)",y = NULL,x="Carapace length")+scale_color_discrete(labels=c('Invasives', 'Natives'))+theme_elsevier()+ theme(legend.position = "none")
+
+#ANCOVA_legend <- get_legend(cray_gud_mass_1)
+
+#ANCOVA_plots<-cowplot::plot_grid(cray_gud_mass, cray_gud_body,cray_object_mass,cray_object_body)
+#ANCOVA_plots
+
+#cowplot::plot_grid(ANCOVA_legend,ANCOVA_plots,rel_heights = c(0.04,1),ncol=1)
+
+
+
+#Object for legend
+bat_gud_mass_1<-ggplot(batsocialnz_solitary,aes(x=Mass,y=GUD,color=Sex))+geom_point()+geom_smooth(method='lm')+labs(title="(a)",y = "Remaining smoothie (g)",x=NULL)+scale_color_discrete(labels=c('Male', 'Female'))+theme_elsevier()+ theme(legend.position = "top")
+bat_gud_mass_1
+
+#GUDs
+bat_gud_mass<-ggplot(batsocialnz_solitary,aes(x=Mass,y=GUD,color=Sex))+geom_point()+geom_smooth(method='lm')+labs(title="(a)",y = "Remaining smoothie (g)",x=NULL)+scale_color_discrete(labels=c('Male', 'Female'))+theme_elsevier()+ theme(legend.position = "none")
+bat_gud_mass
+
+#Foraging time
+bat_time_mass<-ggplot(batsocialnz,aes(x=Mass,y=Duration_foraged_per_day,color=Sex))+geom_point()+geom_smooth(method='lm')+labs(title="(b)",y = "Time spent foraging (s)",x=NULL)+scale_color_discrete(labels=c('Male', 'Female'))+theme_elsevier()+ theme(legend.position = "none")
+bat_time_mass
+
+#Number of patch visits
+bat_visitn_mass<-ggplot(batsocialnz,aes(x=Mass,y=Visits,color=Sex))+geom_point()+geom_smooth(method='lm')+labs(title="(c)",y = "Number of patch visits",x="Mass of bat (g)")+scale_color_discrete(labels=c('Male', 'Female'))+theme_elsevier()+ theme(legend.position = "none")
+bat_visitn_mass
+
+#Mean length of patch visits
+bat_visitl_mass<-ggplot(batsocialnz,aes(x=Mass,y=Visit_mean_duration,color=Sex))+geom_point()+geom_smooth(method='lm')+labs(title="(d)",y = "Mean length of patch visits (s)",x="Mass of bat (g)")+scale_color_discrete(labels=c('Male', 'Female'))+theme_elsevier()+ theme(legend.position = "none")
+bat_visitl_mass
+
+ANCOVA_legend <- get_legend(bat_gud_mass_1)
+ANCOVA_plots<-cowplot::plot_grid(bat_gud_mass, bat_time_mass,bat_visitn_mass,bat_visitl_mass)
+cowplot::plot_grid(ANCOVA_legend,ANCOVA_plots,rel_heights = c(0.04,1),ncol=1)
+```
+
+#Social Context
+```{r}
+##Social Vs. Pairing Vs. Set Vs Foraging
+
+#crayev<-ggplot(crayfish_env_edit,aes(x=Species,y=E,fill=Species))+geom_violin(trim=FALSE,show.legend=FALSE)+geom_boxplot(show.legend=FALSE,width=0.1,fill="white")+labs(title="(b)",x =NULL, y = "Average latency to exit refuge (sec)")+ scale_fill_manual(values=c("#F8766D","#00BFC4"))+ #scale_x_discrete(labels=NULL) + theme_elsevier()+ theme(legend.position = "none")
+
+#GUD Averaged
+gud_averaged<-ggplot(batsocialnz,aes(x=Pairing,y=GUD))+geom_violin(trim=FALSE,show.legend=FALSE)+geom_boxplot(show.legend=FALSE,width=0.1,fill="white")+labs(title="(a)",x=NULL,y = "Remaining smoothie (g)") + theme_elsevier()+ theme(legend.position = "none")+theme(
+ strip.background = element_blank())
+gud_averaged
+
+#GUD Sets
+gud_Sets<-ggplot(batsocialnz,aes(x=Pairing,y=GUD))+geom_violin(trim=FALSE,show.legend=FALSE)+geom_boxplot(show.legend=FALSE,width=0.1,fill="white")+facet_wrap(~Set)+labs(title="(b)",y = NULL, x=NULL) + theme_elsevier()+ theme(legend.position = "none")+theme(
+ strip.background = element_blank())+facet_grid(~Set, labeller = label_both)
+
+#Foraging time Averaged
+visitl_averaged<-ggplot(batsocialnz,aes(x=Pairing,y=Duration_foraged_per_day))+geom_violin(trim=FALSE,show.legend=FALSE)+geom_boxplot(show.legend=FALSE,width=0.1,fill="white")+labs(title="(c)",y = "Time spent foraging (s)",x=NULL) + theme_elsevier()+ theme(legend.position = "none")+theme(
+ strip.background = element_blank(),
+   strip.text.x = element_blank())
+
+#Foraging time Sets
+visitl_Sets<-ggplot(batsocialnz,aes(x=Pairing,y=Duration_foraged_per_day))+geom_violin(trim=FALSE,show.legend=FALSE)+geom_boxplot(show.legend=FALSE,width=0.1,fill="white")+facet_wrap(~Set)+labs(title="(d)",y = NULL, x=NULL)+ theme_elsevier()+ theme(legend.position = "none")+theme(
+ strip.background = element_blank(),
+   strip.text.x = element_blank())
+
+#Number of patch visits Averaged
+visitn_averaged<-ggplot(batsocialnz,aes(x=Pairing,y=Visits))+geom_violin(trim=FALSE,show.legend=FALSE)+geom_boxplot(show.legend=FALSE,width=0.1,fill="white")+labs(title="(e)",y = "Number of patch visits") + theme_elsevier()+ theme(legend.position = "none")+theme(
+ strip.background = element_blank(),
+   strip.text.x = element_blank())
+
+#Number of patch visits Sets
+visitn_Sets<-ggplot(batsocialnz,aes(x=Pairing,y=Visits))+geom_violin(trim=FALSE,show.legend=FALSE)+geom_boxplot(show.legend=FALSE,width=0.1,fill="white")+facet_wrap(~Set)+labs(title="(f)",y =NULL)+ theme_elsevier()+ theme(legend.position = "none")+theme(
+ strip.background = element_blank(),
+   strip.text.x = element_blank())
+
+cowplot::plot_grid(gud_averaged, gud_Sets,visitl_averaged,visitl_Sets,visitn_averaged,visitn_Sets,align = "v", nrow = 3,ncol=2)
+
+##Visit and Social Context
+
+social_averaged<-ggplot(batsocialnz,aes(x=Social,y=Visits))+geom_violin(trim=FALSE,show.legend=FALSE)+geom_boxplot(show.legend=FALSE,width=0.1,fill="white")+labs(title="(a)",x=NULL, y = "Number of patch visits") + theme_elsevier()+ theme(legend.position = "none")+theme(
+ strip.background = element_blank())
+
+social_block<-ggplot(batsocialnz,aes(x=Social,y=Visits))+geom_violin(trim=FALSE,show.legend=FALSE)+geom_boxplot(show.legend=FALSE,width=0.1,fill="white")+facet_wrap(~Set)+labs(title="(b)",x=NULL, y = "Number of patch visits") + theme_elsevier()+ theme(legend.position = "none")+theme(
+ strip.background = element_blank())+facet_grid(~Set, labeller = label_both)
+
+cowplot::plot_grid(social_averaged, social_block,align = "h", nrow = 1)
+
+##Patch equitability
+
+ggplot(batvideonz,aes(x=Patch,y=Duration_mean))+geom_violin(trim=FALSE,show.legend=FALSE)+geom_boxplot(show.legend=FALSE,width=0.1,fill="white")+facet_wrap(~Social)+theme(strip.text.x = element_blank())+labs(y = "Mean length of patch visits (s)")+theme_elsevier()+ theme(legend.position = "none")+theme(
+strip.background = element_blank(),
+strip.text.x = element_blank())
+
+##Patch ownership
+batvideonz
+ggplot(batvideonz_paired,aes(x=Owned,y=Total_number_of_occurences))+geom_violin(trim=FALSE,show.legend=FALSE)+geom_boxplot(show.legend=FALSE,width=0.1,fill="white")+theme(strip.text.x = element_blank())+labs(y = "Number of patch visits",x=NULL)+theme_elsevier()+ theme(legend.position = "none")+theme(
+strip.background = element_blank(),
+strip.text.x = element_blank())
+```
+
